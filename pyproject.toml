@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tmf882x-driver"
+dependencies = [
+    "smbus2>=0.3.0",
+]
+authors = [{name = "Rogier van der Geer", email = "rogier@vander-geer.nl"}]
+description = "Python driver for the AMS TMF8820/TMF8821 dToF imager"
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.urls]
+Repository = "https://github.com/rogiervandergeer/tmf882x-driver"
+
+[tool.setuptools_scm]
+version_file = "src/tmf882x/_version.py"
+
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
