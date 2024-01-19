@@ -71,7 +71,7 @@ class TMF882xMeasurement:
             raw=bytes(data),
         )
 
-    def grid(self, minimum_confidence: int = 128, secondary: bool = False) -> list[list[int | None]]:
+    def grid(self, secondary: bool = False) -> list[list[int | None]]:
         try:
             x, y = SPAD_MAP_DIMENSIONS[self.spad_map]
         except KeyError:
@@ -85,7 +85,7 @@ class TMF882xMeasurement:
         return [
             [
                 applicable_results[row + x * column].distance
-                if applicable_results[row + x * column].confidence >= minimum_confidence
+                if applicable_results[row + x * column].distance > 0
                 else None
                 for row in range(x)
             ]
@@ -170,13 +170,74 @@ class TMF882x:
         while (status := self._read_status()) >= 0x10:
             sleep(0.001)
         if status > 0x01:
-            raise RuntimeError()
+            raise RuntimeError()  # TODO
         while not (self.bus.read_byte_data(self.address, 0xE1) & 0b10):
             sleep(0.001)
         data = _block_read(self.bus, self.address, 0x20, 132)
         # STOP
         self.bus.write_byte_data(self.address, 0x08, 0xFF)
         return TMF882xMeasurement.from_bytes(data, spad_map=self.spad_map)
+
+
+    #####################
+    ### Configuration ###
+    #####################
+
+    @property
+    def measurement_period(self) -> int:
+        with self._configuration_mode():
+            return self.bus.read_word_data(self.address, register=0x24)
+
+    @measurement_period.setter
+    def measurement_period(self, value: int) -> None:
+        with self._configuration_mode():
+            self.bus.write_word_data(self.address, register=0x24, value=value)
+
+    @property
+    def kilo_iterations(self) -> int:
+        with self._configuration_mode():
+            return self.bus.read_word_data(self.address, register=0x26)
+
+    @kilo_iterations.setter
+    def kilo_iterations(self, value: int) -> None:
+        with self._configuration_mode():
+            self.bus.write_word_data(self.address, register=0x26, value=value)
+
+    @property
+    def confidence_threshold(self) -> int:
+        with self._configuration_mode():
+            return self.bus.read_byte_data(self.address, register=0x30)
+
+    @confidence_threshold.setter
+    def confidence_threshold(self, value: int) -> None:
+        with self._configuration_mode():
+            self.bus.write_byte_data(self.address, register=0x30, value=value)
+
+    @property
+    def spad_map(self) -> int:
+        with self._configuration_mode():
+            return self.bus.read_byte_data(self.address, register=0x34)
+
+    @spad_map.setter
+    def spad_map(self, map_id: int) -> None:
+        with self._configuration_mode():
+            self.bus.write_byte_data(self.address, register=0x34, value=map_id)
+
+    ################
+    ### Internal ###
+    ################
+
+    @contextmanager
+    def _configuration_mode(self):
+        # LOAD_CONFIG_PAGE
+        self._send_command(0x16)
+        # Verify config page is loaded
+        data = self.bus.read_i2c_block_data(self.address, 0x20, 4)
+        if data[0] != 0x16 or data[2] != 0xBC or data[3] != 0x00:
+            raise RuntimeError()  # Configuration not correctly loaded.
+        yield
+        # WRITE_CONFIG_PAGE
+        self._send_command(0x15)
 
     def _load_firmware(self):
         """Load the firmware into the device."""
@@ -214,28 +275,6 @@ class TMF882x:
         # Returns three fields: [value, size=0, checksum]
         return list(read)[0]
 
-    @property
-    def spad_map(self) -> int:
-        with self._configuration_mode():
-            return self.bus.read_byte_data(self.address, register=0x34)
-
-    @spad_map.setter
-    def spad_map(self, map_id: int) -> None:
-        with self._configuration_mode():
-            self.bus.write_byte_data(self.address, register=0x34, value=map_id)
-
-    @contextmanager
-    def _configuration_mode(self):
-        # LOAD_CONFIG_PAGE
-        self._send_command(0x16)
-        # Verify config page is loaded
-        data = self.bus.read_i2c_block_data(self.address, 0x20, 4)
-        if data[0] != 0x16 or data[2] != 0xBC or data[3] != 0x00:
-            raise RuntimeError()  # Configuration not correctly loaded.
-        yield
-        # WRITE_CONFIG_PAGE
-        self._send_command(0x15)
-
 
 def _chunks(lst: list[int], chunk_size: int = 80) -> Iterable[list[int]]:
     i = 0
@@ -251,4 +290,3 @@ def _block_read(bus: SMBus, address: int, register: int, size: int) -> list[int]
         register += 32
         size -= 32
     return result
-
