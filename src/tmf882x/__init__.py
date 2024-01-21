@@ -1,14 +1,13 @@
 from contextlib import contextmanager
-from dataclasses import dataclass
 from enum import Enum
 from importlib import resources
-from json import dumps
 from time import sleep
-from typing import Iterable, Literal
+from typing import Iterable
 
 from smbus2 import SMBus, i2c_msg
 
 from tmf882x.constants import SPAD_MAP_DIMENSIONS
+from tmf882x.measurement import TMF882xMeasurement
 
 
 class TMF882xException(RuntimeError):
@@ -26,71 +25,6 @@ class TMF882xMode(Enum):
         # Bits 4 and 5 should be ignored
         return cls(value & 0xCF)
 
-
-@dataclass
-class TMF882xResult:
-    confidence: int
-    distance: int
-
-    @property
-    def result_detected(self):
-        return self.confidence > 0
-
-
-@dataclass
-class TMF882xMeasurement:
-    result_number: int
-    temperature: int
-    n_valid_results: int
-    ambient_light: int
-    photon_count: int
-    reference_count: int
-    system_tick: int
-    results: list[TMF882xResult]
-    spad_map: int
-    raw: bytes
-
-    @classmethod
-    def from_bytes(cls, data: list[int], spad_map: int) -> "TMF882xMeasurement":
-        return TMF882xMeasurement(
-            result_number=data[4],
-            temperature=int.from_bytes(data[5:6], "little", signed=True),
-            n_valid_results=data[6],
-            ambient_light=int.from_bytes(data[8:12], "little"),
-            photon_count=int.from_bytes(data[12:16], "little"),
-            reference_count=int.from_bytes(data[16:20], "little"),
-            system_tick=int.from_bytes(data[20:24], "little"),
-            results=[
-                TMF882xResult(
-                    confidence=data[24 + 3 * i],
-                    distance=int.from_bytes(data[25 + 3 * i : 27 + 3 * i], "little"),
-                )
-                for i in range(36)
-            ],
-            spad_map=spad_map,
-            raw=bytes(data),
-        )
-
-    def grid(self, secondary: bool = False) -> list[list[int | None]]:
-        try:
-            x, y = SPAD_MAP_DIMENSIONS[self.spad_map]
-        except KeyError:
-            raise NotImplementedError("Result grid not implemented for custom spad maps.")
-        offset = 18 if secondary else 0
-        if x == 4 and y == 4:
-            applicable_results = self.results[offset : offset + 8] + self.results[offset + 9 : offset + 17]
-        else:
-            applicable_results = self.results[offset : offset + (x * y)]
-
-        return [
-            [
-                applicable_results[row + x * column].distance
-                if applicable_results[row + x * column].distance > 0
-                else None
-                for row in range(x)
-            ]
-            for column in range(y)
-        ]
 
 class TMF882x:
     def __init__(self, bus: SMBus, address: int = 0x41, poll_delay: float = 0.001):
@@ -152,32 +86,70 @@ class TMF882x:
     def minor(self):
         return self.bus.read_byte_data(self.address, 0x01)
 
-    def _read_status(self) -> int:
-        return self.bus.read_byte_data(self.address, 0x08)
-
-    def _send_command(self, command: int) -> None:
-        self.bus.write_byte_data(self.address, 0x08, command)
-        while (status := self._read_status()) >= 0x10:
-            sleep(0.001)
-        if status > 0x01:
-            raise RuntimeError()  # TODO
-
     def measure(self) -> TMF882xMeasurement:
         # Clear interrupts
         self.bus.write_byte_data(self.address, 0xE1, 0xFF)
         # MEASURE
-        self.bus.write_byte_data(self.address, 0x08, 0x10)
-        while (status := self._read_status()) >= 0x10:
-            sleep(0.001)
-        if status > 0x01:
-            raise RuntimeError()  # TODO
+        self._send_command(0x10)
         while not (self.bus.read_byte_data(self.address, 0xE1) & 0b10):
-            sleep(0.001)
+            sleep(self.poll_delay)
         data = _block_read(self.bus, self.address, 0x20, 132)
         # STOP
         self.bus.write_byte_data(self.address, 0x08, 0xFF)
         return TMF882xMeasurement.from_bytes(data, spad_map=self.spad_map)
 
+    ###################
+    ### Calibration ###
+    ###################
+
+    def calibrate(self) -> bytes:
+        """
+        Perform factory calibration.
+
+        The calibration test shall be done in a housing with minimal ambient light and
+        no target within 40 cm in field of view of the device. The calibration generates
+        a calibration data set, which should be permanently stored on the host.
+
+        The calibration data can be loaded after power-up using the write_calibration method.
+        Note that the calibration data is tied to the spad map. Any change in spad map requires
+        re-calibration (and/or loading of other calibration data).
+        """
+        # Set iterations to 4M
+        iterations = self.kilo_iterations
+        self.kilo_iterations = 4000
+        # Perform calibration
+        self._send_command(0x20)
+        # Load calibration page
+        self._send_command(0x19)
+        # Read calibration data
+        data = _block_read(self.bus, self.address, 0x20, 192)
+        # Write config page
+        self._send_command(0x15)
+        # Reset the # of iterations
+        self.kilo_iterations = iterations
+        return bytes(data[4:])
+
+    def write_calibration(self, data: bytes) -> None:
+        """
+        Write calibration data to the device.
+        """
+        if len(data) != 188:
+            raise ValueError("Calibration data must be 188 bytes long.")
+        # Load calibration page
+        self._send_command(0x19)
+        _block_write(self.bus, self.address, 0x24, list(data))
+        # WRITE_CONFIG_PAGE
+        self._send_command(0x15)
+
+
+    @property
+    def calibration_ok(self) -> bool:
+        """
+        Calibration status.
+
+        This is True if the last measurement was performed with correct calibration.
+        """
+        return self.bus.read_byte_data(self.address, register=0x07) == 0x00
 
     #####################
     ### Configuration ###
@@ -275,6 +247,16 @@ class TMF882x:
         # Returns three fields: [value, size=0, checksum]
         return list(read)[0]
 
+    def _read_status(self) -> int:
+        return self.bus.read_byte_data(self.address, 0x08)
+
+    def _send_command(self, command: int) -> None:
+        self.bus.write_byte_data(self.address, 0x08, command)
+        while (status := self._read_status()) >= 0x10:
+            sleep(self.poll_delay)
+        if status > 0x01:
+            raise RuntimeError(f"Command failed with status {status}.")
+
 
 def _chunks(lst: list[int], chunk_size: int = 80) -> Iterable[list[int]]:
     i = 0
@@ -290,3 +272,10 @@ def _block_read(bus: SMBus, address: int, register: int, size: int) -> list[int]
         register += 32
         size -= 32
     return result
+
+
+def _block_write(bus: SMBus, address: int, register: int, data: list[int]) -> None:
+    while len(data):
+        bus.write_i2c_block_data(address, register, data[:32])
+        register += 32
+        data = data[32:]
