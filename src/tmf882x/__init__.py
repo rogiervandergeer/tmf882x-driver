@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-from enum import Enum
 from importlib import resources
 from time import sleep
 from typing import Iterable
@@ -34,10 +33,10 @@ class TMF882x:
         """Enable the device."""
         self.bus.write_byte_data(self.address, 0xE0, 0x21)
         for _ in range(100):
-            if self.mode == 0x04:
+            if self.mode == 0x41:
                 break
             sleep(self.poll_delay)
-        if self.mode != 0x04:
+        if self.mode != 0x41:
             raise TMF882xException(f"Failed to set mode to enabled. Mode is: {self.mode}.")
         if self.app_id == 0x80 and auto_load_firmware:
             self._load_firmware()
