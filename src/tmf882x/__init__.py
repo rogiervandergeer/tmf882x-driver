@@ -22,8 +22,8 @@ class TMF882xMode(Enum):
 
     @classmethod
     def from_register(cls, value: int) -> "TMF882xMode":
-        # Bits 4 and 5 should be ignored
-        return cls(value & 0xCF)
+        # Bits 1, 3, 4 and 5 should be ignored
+        return cls(value & 0x43)
 
 
 class TMF882x:
@@ -140,7 +140,6 @@ class TMF882x:
         _block_write(self.bus, self.address, 0x24, list(data))
         # WRITE_CONFIG_PAGE
         self._send_command(0x15)
-
 
     @property
     def calibration_ok(self) -> bool:
