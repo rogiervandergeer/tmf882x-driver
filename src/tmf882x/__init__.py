@@ -49,7 +49,7 @@ class TMF882x:
             if self.mode == 0x02:
                 return
             sleep(self.poll_delay)
-        raise RuntimeError(f"Failed to set mode to standby. Mode is: {self.mode}.")
+        raise TMF882xException(f"Failed to set mode to standby. Mode is: {self.mode}.")
 
     def __enter__(self):
         self.enable()
@@ -192,7 +192,7 @@ class TMF882x:
         # Verify config page is loaded
         data = self.bus.read_i2c_block_data(self.address, 0x20, 4)
         if data[0] != 0x16 or data[2] != 0xBC or data[3] != 0x00:
-            raise RuntimeError()  # Configuration not correctly loaded.
+            raise TMF882xException("Configuration not loaded as expected.")
         yield
         # WRITE_CONFIG_PAGE
         self._send_command(0x15)
@@ -241,7 +241,7 @@ class TMF882x:
         while (status := self._read_status()) >= 0x10:
             sleep(self.poll_delay)
         if status > 0x01:
-            raise RuntimeError(f"Command failed with status {status}.")
+            raise TMF882xException(f"Command failed with status {status}.")
 
 
 def _chunks(lst: list[int], chunk_size: int = 80) -> Iterable[list[int]]:
