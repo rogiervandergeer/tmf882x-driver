@@ -14,18 +14,6 @@ class TMF882xException(RuntimeError):
     pass
 
 
-class TMF882xMode(Enum):
-    OFF = 0x00
-    STANDBY = 0x02
-    ENABLED = 0x41
-    # Note: STANDBY_TIMED not implemented
-
-    @classmethod
-    def from_register(cls, value: int) -> "TMF882xMode":
-        # Bits 1, 3, 4 and 5 should be ignored
-        return cls(value & 0x43)
-
-
 class TMF882x:
     def __init__(self, bus: SMBus, address: int = 0x41, poll_delay: float = 0.001):
         self.address = address
@@ -33,8 +21,8 @@ class TMF882x:
         self.poll_delay = poll_delay
 
     @property
-    def mode(self) -> TMF882xMode:
-        return TMF882xMode.from_register(self.bus.read_byte_data(self.address, 0xE0))
+    def mode(self) -> int:
+        return self.bus.read_byte_data(self.address, 0xE0) & 0xCF  # Ignore bits 4 & 5
 
     @property
     def serial_number(self) -> int:
@@ -46,20 +34,19 @@ class TMF882x:
         """Enable the device."""
         self.bus.write_byte_data(self.address, 0xE0, 0x21)
         for _ in range(100):
-            if self.mode == TMF882xMode.ENABLED:
+            if self.mode == 0x04:
                 break
             sleep(self.poll_delay)
-        if self.mode != TMF882xMode.ENABLED:
+        if self.mode != 0x04:
             raise TMF882xException(f"Failed to set mode to enabled. Mode is: {self.mode}.")
         if self.app_id == 0x80 and auto_load_firmware:
             self._load_firmware()
 
     def standby(self) -> None:
         """Set the device in standby mode."""
-        # TODO: stop measurements
         self.bus.write_byte_data(self.address, 0xE0, 0x20)  # Set wake-up to application.
         for _ in range(100):
-            if self.mode == TMF882xMode.STANDBY:
+            if self.mode == 0x02:
                 return
             sleep(self.poll_delay)
         raise RuntimeError(f"Failed to set mode to standby. Mode is: {self.mode}.")
