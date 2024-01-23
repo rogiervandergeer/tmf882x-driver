@@ -9,7 +9,6 @@ class TMF882xSpadResult:
     distance: int
     secondary_confidence: int
     secondary_distance: int
-    histogram: list[int] | None = None
 
 
 @dataclass
