@@ -9,6 +9,7 @@ class TMF882xSpadResult:
     distance: int
     secondary_confidence: int
     secondary_distance: int
+    histogram: list[int] | None = None
 
 
 @dataclass
@@ -65,3 +66,11 @@ class TMF882xMeasurement:
     @property
     def secondary_grid(self) -> list[list[int]]:
         return [[column.secondary_distance for column in row] for row in self.grid]
+
+    @property
+    def primary_grid_confidence(self) -> list[list[int]]:
+        return [[column.confidence for column in row] for row in self.grid]
+
+    @property
+    def secondary_grid_confidence(self) -> list[list[int]]:
+        return [[column.secondary_confidence for column in row] for row in self.grid]
