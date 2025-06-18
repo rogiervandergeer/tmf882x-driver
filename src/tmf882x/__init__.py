@@ -142,9 +142,9 @@ class TMF882x:
         """
         # Load the new i2c address
         #i2c address is 7 bit checking for valid i2c address
-        if (new_address > 127):
-            raise ValueError("I2C address is 7 bit max address is 127(0x7F)")
-            return
+        if (new_address < 8) or (new_address > 127):
+            raise ValueError("I2C address is 7 bit. Min address 0x08 and max address is 0x7F")
+
         self.gpio_0 = 0x5
         self.gpio_1 = 0x5
         self.i2c_address = new_address
@@ -201,12 +201,12 @@ class TMF882x:
     @property
     def i2c_address_change(self) -> int:
         with self._configuration_mode():
-            return self.bus.read_byte_data(self.address, register=0x3F)
+            return self.bus.read_byte_data(self.address, register=0x3E)
 
     @i2c_address_change.setter
     def i2c_address_change(self, value: int) -> None:
         with self._configuration_mode():
-            self.bus.write_byte_data(self.address, register=0x3F, value=value)
+            self.bus.write_byte_data(self.address, register=0x3E, value=value)
 
     @property
     def i2c_address(self) -> int:
@@ -218,12 +218,10 @@ class TMF882x:
     @i2c_address.setter
     def i2c_address(self, value: int) -> None:
         #i2c address is 7 bit checking for valid i2c address
-        if (value > 127):
-            raise ValueError("I2C address is 7 bit max address is 127(0x7F)")
-            return
+        if (value < 8) or (value > 127):
+            raise ValueError("I2C address is 7 bit. Min address 0x08 and max address is 0x7F")
 
         value = value << 1
-        print ("setting i2c address afer shift ", value)
         with self._configuration_mode():
             self.bus.write_byte_data(self.address, register=0x3B, value=value)
 
