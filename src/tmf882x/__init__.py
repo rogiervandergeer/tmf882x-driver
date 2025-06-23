@@ -238,7 +238,7 @@ class TMF882x:
         with self._configuration_mode():
             return self.bus.read_byte_data(self.address, register=0x32)
 
-    @gpio_0.setter
+    @gpio_1.setter
     def gpio_1(self, value: int) -> None:
         with self._configuration_mode():
             self.bus.write_byte_data(self.address, register=0x32, value=value)
