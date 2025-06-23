@@ -145,14 +145,12 @@ class TMF882x:
         if (new_address < 8) or (new_address > 127):
             raise ValueError("I2C address is 7 bit. Min address 0x08 and max address is 0x7F")
 
-        self.gpio_0 = 0x5
-        self.gpio_1 = 0x5
         self.i2c_address = new_address
-        sleep(0.5)
-        self.i2c_address_change = 0xF
-        sleep(0.5)
+        self.i2c_address_change = 0x0
+        sleep(0.1)
         self._send_command(0x21)
-        sleep(0.5)
+        sleep(0.1)
+        self.address = new_address
 
     #####################
     ### Configuration ###
