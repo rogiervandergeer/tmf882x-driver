@@ -136,7 +136,7 @@ class TMF882x:
         """
         return self.bus.read_byte_data(self.address, register=0x07) == 0x00
 
-    def change_i2c_address(self, new_address) -> None:
+    def change_i2c_address(self, new_address: int) -> None:
         """
         Change i2c device address
         """
@@ -263,6 +263,9 @@ class TMF882x:
         """Load the firmware into the device."""
         if self.app_id != 0x80:
             raise TMF882xException("Can only load firmware when in bootloader.")
+        if self.address != 0x41:
+            # Uploading the firmware will change the address back to default.
+            raise TMF882xException("Refusing to load firmware when the address is not 0x41.")
         # DOWNLOAD INIT
         self._send_bootloader_command(0x14, [0x29])
         # SET ADDR
