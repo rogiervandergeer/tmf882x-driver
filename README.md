@@ -26,8 +26,7 @@ with SMBus(1) as bus:
     device = TMF882x(bus=bus)
 ```
 
-The address of the `TMF882x` defaults to `0x41`. If your device's address is different, you can provide it 
-like `TMF882x(bus=bus, address=0x59)`.
+The address of the `TMF882x` defaults to `0x41`. It can be changed using the `change_i2c_address` method. Note that the address will be reset after a power cycle.
 
 When powering up, the device is in standby mode. To enable it, call `device.enable()`, and subsequently
 put it back in standby using `device.standby()`. Or better yet, use a context manager:
