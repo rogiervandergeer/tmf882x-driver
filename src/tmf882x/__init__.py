@@ -136,6 +136,22 @@ class TMF882x:
         """
         return self.bus.read_byte_data(self.address, register=0x07) == 0x00
 
+    def change_i2c_address(self, new_address) -> None:
+        """
+        Change i2c device address
+        """
+        # Load the new i2c address
+        #i2c address is 7 bit checking for valid i2c address
+        if (new_address < 8) or (new_address > 127):
+            raise ValueError("I2C address is 7 bit. Min address 0x08 and max address is 0x7F")
+
+        self.i2c_address = new_address
+        self.i2c_address_change = 0x0
+        sleep(0.1)
+        self._send_command(0x21)
+        sleep(0.1)
+        self.address = new_address
+
     #####################
     ### Configuration ###
     #####################
@@ -179,6 +195,53 @@ class TMF882x:
     def spad_map(self, map_id: int) -> None:
         with self._configuration_mode():
             self.bus.write_byte_data(self.address, register=0x34, value=map_id)
+
+    @property
+    def i2c_address_change(self) -> int:
+        with self._configuration_mode():
+            return self.bus.read_byte_data(self.address, register=0x3E)
+
+    @i2c_address_change.setter
+    def i2c_address_change(self, value: int) -> None:
+        with self._configuration_mode():
+            self.bus.write_byte_data(self.address, register=0x3E, value=value)
+
+    @property
+    def i2c_address(self) -> int:
+        #i2c address is 7 bit and zero bit should be null
+        #shifting 1 bit and sending 
+        with self._configuration_mode():
+            return self.bus.read_byte_data(self.address, register=0x3B) >> 1
+
+    @i2c_address.setter
+    def i2c_address(self, value: int) -> None:
+        #i2c address is 7 bit checking for valid i2c address
+        if (value < 8) or (value > 127):
+            raise ValueError("I2C address is 7 bit. Min address 0x08 and max address is 0x7F")
+
+        value = value << 1
+        with self._configuration_mode():
+            self.bus.write_byte_data(self.address, register=0x3B, value=value)
+
+    @property
+    def gpio_0(self) -> int:
+        with self._configuration_mode():
+            return self.bus.read_byte_data(self.address, register=0x31)
+
+    @gpio_0.setter
+    def gpio_0(self, value: int) -> None:
+        with self._configuration_mode():
+            self.bus.write_byte_data(self.address, register=0x31, value=value)
+
+    @property
+    def gpio_1(self) -> int:
+        with self._configuration_mode():
+            return self.bus.read_byte_data(self.address, register=0x32)
+
+    @gpio_1.setter
+    def gpio_1(self, value: int) -> None:
+        with self._configuration_mode():
+            self.bus.write_byte_data(self.address, register=0x32, value=value)
 
     ################
     ### Internal ###
